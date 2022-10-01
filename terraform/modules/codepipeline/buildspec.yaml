@@ -1,0 +1,72 @@
+version: 0.2
+env:
+  variables:
+    AWS_REGION: $AWS_REGION
+    APP_NAME: $APP_NAME
+    APP_ENV: $APP_ENV
+    ACCOUNT_ID: $ACCOUNT_ID
+    REPOSITORY_URL: $REPOSITORY_URL
+    CLUSTER_NAME: $CLUSTER_NAME
+    REPO_NAME: $REPO_NAME
+  parameter-store:
+    AWS_ACCESS_KEY_ID: access_key
+    AWS_SECRET_ACCESS_KEY: secret_key
+
+
+phases:
+  pre_build:
+    commands:
+
+      # Set AWS Profile
+      - aws --profile default configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+      - aws --profile default configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+      - aws --profile default configure set region $AWS_REGION
+
+      # Login to ECR, set commit vars.
+      - $(aws ecr get-login --no-include-email)
+      - COMMIT="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
+      - TAG="${COMMIT}"
+      - IMAGE_URI="${REPOSITORY_URL}:${TAG}"
+      - echo $IMAGE_URI
+
+      # == Install Prerequisites ==
+      
+      # (Terraform)
+      - sudo apt-get update && sudo apt-get install -y gnupg software-properties-common
+      - wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      - gpg --no-default-keyring --keyring /usr/share/keyrings/hashicorp-archive-keyring.gpg --fingerprint
+      - echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+      - sudo apt update
+      - sudo apt-get install terraform
+
+      # (Terragrunt)
+      - wget -q https://github.com/gruntwork-io/terragrunt/releases/download/v0.38.3/terragrunt_linux_amd64
+      - mv terragrunt_linux_amd64 terragrunt
+      - chmod u+x terragrunt
+      - mv terragrunt /bin/
+      - terragrunt --version
+
+      # (Helm)
+      - wget https://get.helm.sh/helm-v3.9.0-linux-amd64.tar.gz
+      - tar -zxvf helm-v3.9.0-linux-amd64.tar.gz   
+      - mv linux-amd64/helm /usr/local/bin/helm
+  build:
+    commands:
+
+      # Build Application Image
+      - cd app-code
+      - docker build -t $REPO_NAME .
+      - docker tag $REPO_NAME:latest $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPO_NAME:$TAG
+      - docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPO_NAME:$TAG
+
+      # Push Helm Chart (Hardcoded)
+      - cd ../helm-charts
+      - helm package weather-web-app-chart
+      - aws ecr get-login-password --region $AWS_REGION | helm registry login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - helm push weather-web-app-chart-0.1.0.tgz oci://$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/
+
+      # Initiate Terraform apply for Deploy Module here
+      - cd ../terraform/env/$APP_ENV/deploy
+      - terragrunt init
+      - terragrunt plan
+      - terragrunt apply --auto-approve --var commit_tag=$TAG --var deploy_app=true

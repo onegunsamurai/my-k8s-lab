@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.appName }}-lb
+  namespace: {{ .Values.ingress.namespace }}
+  annotations:
+    alb.ingress.kubernetes.io/scheme: {{ .Values.ingress.lbSettings.lbType }}
+    alb.ingress.kubernetes.io/target-type: {{ .Values.ingress.lbSettings.targetType }}
+    alb.ingress.kubernetes.io/load-balancer-name: {{ .Values.ingress.lbSettings.loadBalancerName }}
+    alb.ingress.kubernetes.io/backend-protocol: {{ .Values.ingress.lbSettings.backendProtocol }}
+spec:
+  ingressClassName: alb
+  rules:
+  - http:
+      paths:
+      - path: /
+        backend:
+          service:
+            name: {{ .Values.appName }}-svc
+            port:
+              number: {{ .Values.ingress.servicePort | int }}
+        pathType: Prefix

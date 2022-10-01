@@ -1,0 +1,30 @@
+# Default values for weather-web-app.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+appName: weather-web-app
+namespace: dev  # Default Deployment namespace
+
+image:
+  repository: aws-repository  # This should be your aws repository
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets:
+  - name: regcred
+
+service:
+  type: NodePort
+  port: 5000
+
+ingress:
+  namespace: "dev"
+  servicePort: 5000
+  lbSettings:
+    lbType: internet-facing   # Can be Internal or External
+    targetType: instance   # IP or Instance
+    loadBalancerName: aws-load-balancer-controller # Name of LB
+    backendProtocol: HTTP  # HTTP or HTTPS

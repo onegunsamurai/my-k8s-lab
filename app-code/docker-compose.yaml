@@ -1,0 +1,10 @@
+version: '3.4'
+
+services:
+  flask-weather-app:
+    image: flask-weather-app
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - 5000:5000
